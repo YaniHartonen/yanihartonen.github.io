@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0a0a0a">
+<title>Päivä</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg: #0a0a0a; --surface: #141414; --line: #222;
+    --text: #e8e8e8; --muted: #555; --check: #c8c8c8;
+    --done-bg: #1a1a1a; --accent: #c8c8c8; --strike: #444;
+  }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Courier New', Courier, monospace;
+    min-height: 100dvh; display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    padding: 24px 20px; -webkit-font-smoothing: antialiased;
+  }
+  .container { width: 100%; max-width: 360px; }
+  .date-block { margin-bottom: 40px; }
+  .day-name { font-size: 11px; letter-spacing: 0.25em; text-transform: uppercase; color: var(--muted); margin-bottom: 4px; }
+  .date-num { font-size: 52px; font-weight: 400; line-height: 1; color: var(--text); letter-spacing: -0.02em; }
+  .month-year { font-size: 13px; color: var(--muted); letter-spacing: 0.1em; margin-top: 4px; }
+  .progress-bar { width: 100%; height: 1px; background: var(--line); margin-bottom: 40px; overflow: hidden; }
+  .progress-fill { height: 100%; background: var(--accent); transition: width 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+  .tasks { display: flex; flex-direction: column; gap: 0; }
+  .task { display: flex; align-items: center; gap: 16px; padding: 18px 0; border-bottom: 1px solid var(--line); cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; }
+  .task:first-child { border-top: 1px solid var(--line); }
+  .task-check { width: 22px; height: 22px; border: 1px solid var(--muted); flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: border-color 0.2s, background 0.2s; }
+  .task.done .task-check { border-color: var(--check); background: var(--check); }
+  .checkmark { opacity: 0; transform: scale(0.5); transition: opacity 0.2s, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+  .task.done .checkmark { opacity: 1; transform: scale(1); }
+  .task-info { flex: 1; }
+  .task-name { font-size: 15px; letter-spacing: 0.02em; color: var(--text); line-height: 1.2; }
+  .task-meta { font-size: 11px; color: var(--muted); margin-top: 3px; letter-spacing: 0.05em; }
+  .task.done .task-name { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--strike); }
+  .done-message { margin-top: 40px; font-size: 11px; letter-spacing: 0.2em; text-transform: uppercase; color: var(--muted); text-align: center; opacity: 0; transform: translateY(8px); transition: opacity 0.5s, transform 0.5s; }
+  .done-message.visible { opacity: 1; transform: translateY(0); }
+  .task:active { background: #ffffff04; }
+  .streak { display: flex; justify-content: space-between; margin-top: 40px; padding-top: 20px; border-top: 1px solid var(--line); }
+  .streak-item { text-align: center; }
+  .streak-num { font-size: 24px; color: var(--text); line-height: 1; }
+  .streak-label { font-size: 10px; color: var(--muted); letter-spacing: 0.15em; text-transform: uppercase; margin-top: 4px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="date-block">
+    <div class="day-name" id="dayName"></div>
+    <div class="date-num" id="dateNum"></div>
+    <div class="month-year" id="monthYear"></div>
+  </div>
+  <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%"></div></div>
+  <div class="tasks" id="taskList"></div>
+  <div class="done-message" id="doneMsg">— päivä tehty —</div>
+  <div class="streak">
+    <div class="streak-item"><div class="streak-num" id="streakToday">0/3</div><div class="streak-label">tänään</div></div>
+    <div class="streak-item"><div class="streak-num" id="streakDays">0</div><div class="streak-label">streak</div></div>
+    <div class="streak-item"><div class="streak-num" id="streakTotal">0</div><div class="streak-label">yhteensä</div></div>
+  </div>
+</div>
+<script>
+const TASKS = [
+  { id: 'finnish',   name: 'Suomi',         meta: '30 min' },
+  { id: 'writing',   name: 'Kirjoitus',     meta: '300–500 sanaa' },
+  { id: 'calisthen', name: 'Kalisteniikka', meta: '30 min' },
+];
+const DAYS_RU = ['Воскресенье','Понедельник','Вторник','Среда','Четверг','Пятница','Суббота'];
+const MONTHS_RU = ['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'];
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function loadState() { const r = localStorage.getItem('tracker_'+todayKey()); return r ? JSON.parse(r) : {}; }
+function saveState(s) { localStorage.setItem('tracker_'+todayKey(), JSON.stringify(s)); }
+function loadStats() { const r = localStorage.getItem('tracker_stats'); return r ? JSON.parse(r) : { streak:0, total:0, lastFullDay:null }; }
+function saveStats(s) { localStorage.setItem('tracker_stats', JSON.stringify(s)); }
+function updateStats(allDone) {
+  const stats = loadStats(); const today = todayKey();
+  if (allDone && stats.lastFullDay !== today) {
+    const y = new Date(); y.setDate(y.getDate()-1);
+    const yKey = `${y.getFullYear()}-${String(y.getMonth()+1).padStart(2,'0')}-${String(y.getDate()).padStart(2,'0')}`;
+    stats.streak = stats.lastFullDay === yKey ? stats.streak+1 : 1;
+    stats.total = (stats.total||0)+1; stats.lastFullDay = today; saveStats(stats);
+  }
+  return stats;
+}
+function render() {
+  const now = new Date();
+  document.getElementById('dayName').textContent = DAYS_RU[now.getDay()];
+  document.getElementById('dateNum').textContent = now.getDate();
+  document.getElementById('monthYear').textContent = `${MONTHS_RU[now.getMonth()]} ${now.getFullYear()}`;
+  const state = loadState(); const list = document.getElementById('taskList'); list.innerHTML = '';
+  TASKS.forEach(task => {
+    const done = !!state[task.id]; const div = document.createElement('div');
+    div.className = 'task'+(done?' done':'');
+    div.innerHTML = `<div class="task-check"><svg class="checkmark" width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4L4.5 7.5L11 1" stroke="#0a0a0a" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></div><div class="task-info"><div class="task-name">${task.name}</div><div class="task-meta">${task.meta}</div></div>`;
+    div.addEventListener('click', () => toggle(task.id)); list.appendChild(div);
+  });
+  const doneCount = TASKS.filter(t => state[t.id]).length;
+  document.getElementById('progressFill').style.width = (doneCount/TASKS.length*100)+'%';
+  document.getElementById('doneMsg').classList.toggle('visible', doneCount===TASKS.length);
+  const stats = updateStats(doneCount===TASKS.length);
+  document.getElementById('streakToday').textContent = `${doneCount}/3`;
+  document.getElementById('streakDays').textContent = stats.streak||0;
+  document.getElementById('streakTotal').textContent = stats.total||0;
+}
+function toggle(id) { const s = loadState(); s[id]=!s[id]; saveState(s); render(); }
+render();
+</script>
+</body>
+</html>
